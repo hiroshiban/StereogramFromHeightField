@@ -1,11 +1,11 @@
 % generateRDS.m
 %
-% a simple script to generate a Red-Green/Red-Cyan/Dual
+% a simple script to generate a Red-Green/Red-Cyan/Left_right_eye-separated
 % Random-Dot-Stereogram (RDS) image from an input height map
 %
 %
 % Created    : "2010-12-03 11:50:05 banh"
-% Last Update: "2021-06-13 22:47:08 ban"
+% Last Update: "2021-06-18 15:39:52 ban"
 
 %% add path to the subfunctions
 
@@ -35,8 +35,8 @@ oversampling_ratio=3;  % ratio of the image oversampling
 img_height_adj_flg=0;  % 0 or 1. whether adjusting image height. if 0, the height (depth) map is adjusted to be 'max_height' defined below
 max_height=20;         % max height of the image in cm, used when the input image is adjusted its size later
 
-% image format, 'redgreen', 'redcyan', or 'dual'
-img_mode='redcyan';
+% image format, 'redgreen', 'redcyan', or 'separated'
+img_mode='separated';%'redcyan';
 
 % noise parameters
 % 1. noise_mode   : 'acor' (= anti-correlated noises) or 'snr' (= adding normally distributed depth noises)
@@ -70,9 +70,12 @@ if img_height_adj_flg~=0
   img_field=(img_field-min(img_field(:)))./(max(img_field(:))-min(img_field(:))); % normalizing 0.0-1.0
   img_field=max_height*img_field;
 else
-  img_field=img_field./10; % just devide by 10. specific to the face images sent from Dorita-chan.
+  img_field=img_field./10; % just devide by 10. specific to the face images sent from my collaborator.
 end
 
+% here, finally multiplying -1 is required as near(closer) = negative value
+% in stereo computation, while brighter (positive) is higher in the image.
+img_field=-1*img_field;
 
 %% adjust parameters for oversampling
 
@@ -102,7 +105,7 @@ dotalpha=basedot(:,:,4)./max(max(basedot(:,:,4))); % get alpha channel value 0-1
 % generate correlated RDS
 if strcmpi(noise_mode,'acor')
   % anti-correlated dots are assigned in the MEX function below.
-  [imgL,imgR]=RDSfastest_with_acor_noise_MEX(posL,posR,wdot,bdot,dotalpha,dotDens,noise_ratio,colors(3));
+  [img_L,img_R]=RDSfastest_with_acor_noise_MEX(posL,posR,wdot,bdot,dotalpha,dotDens,noise_ratio,colors(3));
 elseif strcmpi(noise_mode,'snr')
   % noise dots are assigned in advance of generating the RDS.
   obj_idx=find(img_field~=0);
@@ -121,25 +124,25 @@ elseif strcmpi(noise_mode,'snr')
     error('noise_adding_method should be ''acor'' or ''snr''.');
   end
 
-  [imgL,imgR]=RDSfastest_with_snr_noise_MEX(posL,posR,wdot,bdot,dotalpha,dotDens,colors(3));
+  [img_L,img_R]=RDSfastest_with_snr_noise_MEX(posL,posR,wdot,bdot,dotalpha,dotDens,colors(3));
 else
   error('noise_mode should be ''acor'' or ''snr''.');
 end
 
 % convert the generated image(s) for anaglyphs or haploscope viewing
 if strcmpi(img_mode,'redgreen')
-  img=reshape([imgR imgL colors(3)*ones(size(imgL))],[size(imgL),3]);
+  img=reshape([img_L img_R colors(3)*ones(size(img_R))],[size(img_R),3]);
 elseif strcmpi(img_mode,'redcyan')
-  img=reshape([imgR imgL imgL],[size(imgL),3]);
-elseif strcmpi(img_mode,'dual')
+  img=reshape([img_L img_R img_R],[size(img_R),3]);
+elseif strcmpi(img_mode,'separated')
   % do nothing now
 else
-  error('noise_mode should be ''redgreen'', ''redcyan'' or ''dual''.');
+  error('noise_mode should be ''redgreen'', ''redcyan'' or ''separated''.');
 end
 
 % resize the oversampoled image(s)
 if oversampling_ratio~=1
-  if ~strcmpi(img_mode,'dual')
+  if ~strcmpi(img_mode,'separated')
     img=imresize(img,1/oversampling_ratio);
   else
     img_L=imresize(img_L,1/oversampling_ratio);
@@ -152,7 +155,7 @@ end
 
 save_dir=fullfile(pwd,'images');
 if ~exist(save_dir,'dir'), mkdir(save_dir); end
-if ~strcmpi(img_mode,'dual')
+if ~strcmpi(img_mode,'separated')
   imwrite(img,fullfile(save_dir,'img.bmp'),'bmp');
 else
   imwrite(img_L,fullfile(save_dir,'img_L.bmp'),'bmp');
